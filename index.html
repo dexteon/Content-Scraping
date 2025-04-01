@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+
+    <base target="_top">
+    <?!= include('css_style'); ?>
+    <style> 
+    #section_left{ float: left; width: 50% }
+    #section_right{ float: right; width: 50% }
+    #section_right_left{ float: left;}
+    #section_right_right{ text-align: right; float: right; margin-right: 20% }
+    #formatted_target{ height: 900px; width: 80% }
+    h1 {margin-left: 0px; margin-right: 0px}
+    #send_email { float: right }
+    #bod_raw{
+    width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    transform:scale(0.75) translate(-18%, -17%);
+    left:0px
+    } 
+    </style>
+  </head>
+  <body>
+    <h1> BOD-Scrape </h1>
+    <span id='section_left'>
+    <h2> Latest BOD Report <i>(obtained <?!= get_report_time(); ?>)</i></h2>
+    <blockquote>
+    <div id='bod_subject'><?!= get_report_subject(); ?></div>
+    <div id='bod_raw'><?!= get_report_body(); ?></div>
+    </blockquote>
+    </span>
+    <span id='section_right'>
+    <span id='section_right_left'><h2> Formatted BOD Report</h2></span>
+    <span id='section_right_right'><a role="button" class='Button Button--info' id='send_email'>Send BOD Report</a></span>
+    <div id='bod_formatted'>
+    <textarea id='formatted_target' class="Form-input"></textarea>
+    </div>
+    </span>
+    <script>
+parse();
+
+document.getElementById('send_email').addEventListener('click', email_send_event);
+
+function email_send_event(){
+    document.getElementById("send_email").removeEventListener("click", email_send_event);
+    document.getElementById('send_email').style.display = 'none';
+    
+    email_send();
+}
+
+function email_send(){
+    var email_to_be_sent = document.getElementById('formatted_target').value;
+    var email_subject = 'Re: ' + document.getElementById('bod_subject').innerHTML;
+    email_to_be_sent = email_to_be_sent + "\n---\nCary Network Management Center - Power/Transport\nO 800-251-6517\n7000 Weston Pkwy\nCary, NC 27513";
+    google.script.run.send_email(email_subject, email_to_be_sent);
+    window.alert("BOD-Report sent");
+}
+
+function parse(){
+    var rawReport;
+    var outputString = "";
+    
+    rawReport = document.getElementById('bod_raw');
+    modReport = rawReport.cloneNode(true).getElementsByTagName('pre');
+    
+    if(modReport.length == 0) return;
+    
+    for(i = 0; i < modReport.length; i++){
+        // Clean up HTML and prepare for parsing
+        modReport[i].innerHTML = modReport[i].innerHTML.replace(/\r?\n|\r/g, '');
+        
+        // Extract site information
+        var siteMatch = /<td>Location\(Site\)<\/td><td>(\w+)/.exec(modReport[i].innerHTML);
+        if(!siteMatch) continue;
+        
+        var site = siteMatch[1];
+        outputString += site + "\n";
+        
+        // Add address placeholder - will be filled by server-side code
+        outputString += "Address: [Address will be filled from spreadsheet]\n";
+        
+        // Extract PB Level
+        var pbMatch = /<td>PB Level<\/td><td>(\d+)<\/td>/.exec(modReport[i].innerHTML);
+        if(pbMatch){
+            outputString += "PB Level " + pbMatch[1] + "\n";
+        }
+        
+        // Extract Battery Reserve
+        var batteryMatch = /<td>Est Batt Status<\/td><td>R=(\d+\.\d+)\//.exec(modReport[i].innerHTML);
+        if(batteryMatch){
+            outputString += "Battery Reserve time/remain battery: " + batteryMatch[1] + "hrs\n";
+        }
+        
+        // Extract Site Manager placeholder
+        outputString += "Site Manager: [Will be filled from spreadsheet]\n";
+        
+        // Extract Ticket Information
+        var etmsMatch = /<td>ETMS Ticket#<\/td><td>(.*?)<\/td>/.exec(modReport[i].innerHTML);
+        var vRepairMatch = /<td>VRepair Ticket#<\/td><td>(.*?)<\/td>/.exec(modReport[i].innerHTML);
+        
+        if(etmsMatch && etmsMatch[1].trim() !== ""){
+            outputString += "ETMS Ticket: " + etmsMatch[1] + "\n";
+        }
+        
+        if(vRepairMatch && vRepairMatch[1].trim() !== ""){
+            outputString += "VRepair Ticket: " + vRepairMatch[1] + "\n";
+        }
+        
+        // Extract Flash Information
+        var flashIDMatch = /Flash ID:(\d+)/.exec(modReport[i].innerHTML);
+        if(flashIDMatch){
+            outputString += "Flash ID: " + flashIDMatch[1];
+            
+            var flashStatusMatch = /Flash Status: (\w+)/.exec(modReport[i].innerHTML);
+            if(flashStatusMatch){
+                outputString += ", Status: " + flashStatusMatch[1] + "\n";
+            } else {
+                outputString += "\n";
+            }
+            
+            // Look for flash comment
+            var commentMatch = /<th>timeStamp \(GMT\)<\/th><th>comment<\/th><\/tr><tr><td>(?:.*?)<\/td><td>(.*?)<\/td>/.exec(modReport[i].innerHTML);
+            if(commentMatch && commentMatch[1].trim() !== ""){
+                outputString += "Comment: " + commentMatch[1].trim() + "\n";
+            }
+        }
+        
+        // Add blank line for operator notes
+        outputString += "\n";
+        
+        // Add double space between sites
+        if(i < modReport.length - 1){
+            outputString += "\n";
+        }
+    }
+    
+    document.getElementById('formatted_target').value = outputString;
+}
+    </script>
+  </body>
+</html>
